@@ -10,11 +10,13 @@ from bs4 import BeautifulSoup
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
+# Base de dades SQLite
 DATABASE_URL = "sqlite:///./ofertes.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
+# Model
 class Oferta(Base):
     __tablename__ = "ofertes"
     id = Column(Integer, primary_key=True)
@@ -25,60 +27,8 @@ class Oferta(Base):
 
 Base.metadata.create_all(bind=engine)
 
+# Serveis territorials
 SERVEIS = {
     "Catalunya Central": "https://educacio.gencat.cat/ca/departament/serveis-territorials/catalunya-central/personal-docent/nomenaments-telematics/dificil-cobertura/",
     "Baix Llobregat": "https://educacio.gencat.cat/ca/departament/serveis-territorials/baix-llobregat/personal-docent/nomenaments-telematics/dificil-cobertura/",
-    "Girona": "https://educacio.gencat.cat/ca/departament/serveis-territorials/girona/personal-docent/nomenaments-telematics/dificil-cobertura/",
-    "Barcelona Comarques": "https://educacio.gencat.cat/ca/departament/serveis-territorials/barcelona-comarques/personal-docent/nomenaments-telematics/dificil-cobertura/",
-    "Vallès Occidental": "https://educacio.gencat.cat/ca/departament/serveis-territorials/valles-occidental/personal-docent/nomenaments-telematics/dificil-cobertura/",
-    "Maresme–Vallès Oriental": "https://educacio.gencat.cat/ca/departament/serveis-territorials/maresme-valles-oriental/personal-docent/nomenaments-telematics/dificil-cobertura/",
-    "Consorci BCN": "https://www.edubcn.cat/ca/professorat_i_pas/seleccio_rrhh/dificil_cobertura"
-}
-
-@app.get("/")
-def index(request: Request):
-    db = SessionLocal()
-    ofertes = db.query(Oferta).order_by(Oferta.data_detectada.desc()).all()
-    db.close()
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "ofertes": ofertes
-    })
-
-@app.post("/aplicada")
-def marcar(oferta_id: int = Form(...)):
-    db = SessionLocal()
-    oferta = db.query(Oferta).get(oferta_id)
-    oferta.aplicada = not oferta.aplicada
-    db.commit()
-    db.close()
-    return RedirectResponse("/", status_code=303)
-
-@app.get("/scrape")
-def scrape():
-    db = SessionLocal()
-    existents = {o.url_pdf for o in db.query(Oferta).all()}
-
-    for servei, url in SERVEIS.items():
-        try:
-            headers = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6)"
-}
-response = requests.get(url, headers=headers, timeout=20, verify=False)
-html = response.text
-
-            soup = BeautifulSoup(html, "html.parser")
-            for a in soup.find_all("a", href=True):
-                if a["href"].lower().endswith(".pdf"):
-                    pdf = a["href"]
-                    if not pdf.startswith("http"):
-                        pdf = url.rstrip("/") + "/" + pdf.lstrip("/")
-                    if pdf not in existents:
-                        db.add(Oferta(servei=servei, url_pdf=pdf))
-                except Exception as e:
-            print("ERROR a", servei, e)
-
-
-    db.commit()
-    db.close()
-    return {"ok": True}
+    "Girona": "https://educacio.gencat.cat/ca/departament/serveis-territorials/girona/per
