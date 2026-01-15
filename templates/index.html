@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Ofertes difícil cobertura</title>
+</head>
+<body>
+<h2>Ofertes difícil cobertura</h2>
+
+<table border="1" cellpadding="5">
+<tr>
+  <th>Servei</th>
+  <th>PDF</th>
+  <th>Data</th>
+  <th>He aplicat</th>
+</tr>
+
+{% for o in ofertes %}
+<tr>
+  <td>{{ o.servei }}</td>
+  <td><a href="{{ o.url_pdf }}" target="_blank">Obrir PDF</a></td>
+  <td>{{ o.data_detectada.strftime("%d/%m/%Y") }}</td>
+  <td>
+    <form method="post" action="/aplicada">
+      <input type="hidden" name="oferta_id" value="{{ o.id }}">
+      <input type="checkbox" onchange="this.form.submit()" {% if o.aplicada %}checked{% endif %}>
+    </form>
+  </td>
+</tr>
+{% endfor %}
+</table>
+
+</body>
+</html>
