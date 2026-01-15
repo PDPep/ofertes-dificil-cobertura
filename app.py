@@ -75,8 +75,9 @@ html = response.text
                         pdf = url.rstrip("/") + "/" + pdf.lstrip("/")
                     if pdf not in existents:
                         db.add(Oferta(servei=servei, url_pdf=pdf))
-        except:
-            pass
+                except Exception as e:
+            print("ERROR a", servei, e)
+
 
     db.commit()
     db.close()
