@@ -61,7 +61,12 @@ def scrape():
 
     for servei, url in SERVEIS.items():
         try:
-            html = requests.get(url, timeout=15).text
+            headers = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6)"
+}
+response = requests.get(url, headers=headers, timeout=20, verify=False)
+html = response.text
+
             soup = BeautifulSoup(html, "html.parser")
             for a in soup.find_all("a", href=True):
                 if a["href"].lower().endswith(".pdf"):
