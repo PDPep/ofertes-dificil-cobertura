@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
+import asyncio
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -37,31 +38,8 @@ SERVEIS = {
     "Consorci BCN": "https://www.edubcn.cat/ca/professorat_i_pas/seleccio_rrhh/dificil_cobertura"
 }
 
-# --- Pàgina principal ---
-@app.get("/")
-def index(request: Request):
-    db = SessionLocal()
-    ofertes = db.query(Oferta).order_by(Oferta.data_detectada.desc()).all()
-    db.close()
-    return templates.TemplateResponse(
-        "index.html",
-        {"request": request, "ofertes": ofertes}
-    )
-
-# --- Marcar com aplicada ---
-@app.post("/aplicada")
-def marcar(oferta_id: int = Form(...)):
-    db = SessionLocal()
-    oferta = db.get(Oferta, oferta_id)
-    if oferta:
-        oferta.aplicada = not oferta.aplicada
-        db.commit()
-    db.close()
-    return RedirectResponse("/", status_code=303)
-
-# --- Scraper ---
-@app.get("/scrape")
-def scrape():
+# --- Funció scrape centralitzada ---
+def run_scrape():
     db = SessionLocal()
     existents = {o.url_pdf for o in db.query(Oferta).all()}
 
@@ -85,6 +63,42 @@ def scrape():
             print(f"Error amb {servei}: {e}")
 
     db.commit()
-    total = db.query(Oferta).count()
     db.close()
-    return {"ok": True, "total": total}
+
+# --- Background task amb cron automàtic ---
+async def scraper_cron():
+    await asyncio.sleep(5)  # espera que arranqui l'app
+    while True:
+        print("Scraper automàtic executant...")
+        run_scrape()
+        await asyncio.sleep(60 * 30)  # cada 30 minuts
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(scraper_cron())
+
+# --- Rutes ---
+@app.get("/")
+def index(request: Request):
+    db = SessionLocal()
+    ofertes = db.query(Oferta).order_by(Oferta.data_detectada.desc()).all()
+    db.close()
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "ofertes": ofertes}
+    )
+
+@app.post("/aplicada")
+def marcar(oferta_id: int = Form(...)):
+    db = SessionLocal()
+    oferta = db.get(Oferta, oferta_id)
+    if oferta:
+        oferta.aplicada = not oferta.aplicada
+        db.commit()
+    db.close()
+    return RedirectResponse("/", status_code=303)
+
+@app.get("/scrape")
+def scrape_manual():
+    run_scrape()
+    return {"ok": True}
