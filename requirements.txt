@@ -1,7 +1,7 @@
 fastapi
 uvicorn
-jinja2
+gunicorn
+sqlalchemy
 requests
 beautifulsoup4
-sqlalchemy
-python-multipart
+jinja2
