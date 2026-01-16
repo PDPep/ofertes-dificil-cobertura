@@ -16,9 +16,15 @@
 
 {% for o in ofertes %}
 <tr>
-  <td>{{ o.servei }}</td>
-  <td><a href="{{ o.url_pdf }}" target="_blank">Obrir PDF</a></td>
-  <td>{{ o.data_detectada.strftime("%d/%m/%Y") }}</td>
+  <td>{{ o.servei or "" }}</td>
+  <td>
+    {% if o.url_pdf %}
+      <a href="{{ o.url_pdf }}" target="_blank">Obrir PDF</a>
+    {% else %}
+      -
+    {% endif %}
+  </td>
+  <td>{{ o.data_detectada.strftime("%d/%m/%Y") if o.data_detectada else "" }}</td>
   <td>
     <form method="post" action="/aplicada">
       <input type="hidden" name="oferta_id" value="{{ o.id }}">
