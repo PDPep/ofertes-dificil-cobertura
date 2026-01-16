@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
+# --- Base de dades ---
 DATABASE_URL = "sqlite:///./ofertes.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine)
@@ -25,6 +26,7 @@ class Oferta(Base):
 
 Base.metadata.create_all(bind=engine)
 
+# --- Serveis territorials ---
 SERVEIS = {
     "Catalunya Central": "https://educacio.gencat.cat/ca/departament/serveis-territorials/catalunya-central/personal-docent/nomenaments-telematics/dificil-cobertura/",
     "Baix Llobregat": "https://educacio.gencat.cat/ca/departament/serveis-territorials/baix-llobregat/personal-docent/nomenaments-telematics/dificil-cobertura/",
@@ -35,25 +37,29 @@ SERVEIS = {
     "Consorci BCN": "https://www.edubcn.cat/ca/professorat_i_pas/seleccio_rrhh/dificil_cobertura"
 }
 
+# --- Pàgina principal ---
 @app.get("/")
 def index(request: Request):
     db = SessionLocal()
     ofertes = db.query(Oferta).order_by(Oferta.data_detectada.desc()).all()
     db.close()
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "ofertes": ofertes
-    })
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "ofertes": ofertes}
+    )
 
+# --- Marcar com aplicada ---
 @app.post("/aplicada")
 def marcar(oferta_id: int = Form(...)):
     db = SessionLocal()
     oferta = db.get(Oferta, oferta_id)
-    oferta.aplicada = not oferta.aplicada
-    db.commit()
+    if oferta:
+        oferta.aplicada = not oferta.aplicada
+        db.commit()
     db.close()
     return RedirectResponse("/", status_code=303)
 
+# --- Scraper ---
 @app.get("/scrape")
 def scrape():
     db = SessionLocal()
@@ -79,6 +85,6 @@ def scrape():
             print(f"Error amb {servei}: {e}")
 
     db.commit()
+    total = db.query(Oferta).count()
     db.close()
-    return {"ok": True}
-
+    return {"ok": True, "total": total}
