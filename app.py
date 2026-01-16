@@ -1,104 +1,83 @@
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import FastAPI, Form
+from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
-import asyncio
 
-app = FastAPI()
-templates = Jinja2Templates(directory="templates")
+# -----------------------------
+# Configuració base de dades
+# -----------------------------
+DATABASE_URL = "sqlite:///./ofertes.db"  # Si Render després vols PostgreSQL, només canvia l'URL
 
-# --- Base de dades ---
-DATABASE_URL = "sqlite:///./ofertes.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 class Oferta(Base):
     __tablename__ = "ofertes"
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, index=True)
     servei = Column(String)
-    url_pdf = Column(String, unique=True)
-    data_detectada = Column(DateTime, default=datetime.utcnow)
+    url_pdf = Column(String, unique=True, index=True)
+    data_detectada = Column(DateTime, default=datetime.now)
     aplicada = Column(Boolean, default=False)
 
 Base.metadata.create_all(bind=engine)
 
-# --- Serveis territorials ---
-SERVEIS = {
-    "Catalunya Central": "https://educacio.gencat.cat/ca/departament/serveis-territorials/catalunya-central/personal-docent/nomenaments-telematics/dificil-cobertura/",
-    "Baix Llobregat": "https://educacio.gencat.cat/ca/departament/serveis-territorials/baix-llobregat/personal-docent/nomenaments-telematics/dificil-cobertura/",
-    "Girona": "https://educacio.gencat.cat/ca/departament/serveis-territorials/girona/personal-docent/nomenaments-telematics/dificil-cobertura/",
-    "Barcelona Comarques": "https://educacio.gencat.cat/ca/departament/serveis-territorials/barcelona-comarques/personal-docent/nomenaments-telematics/dificil-cobertura/",
-    "Vallès Occidental": "https://educacio.gencat.cat/ca/departament/serveis-territorials/valles-occidental/personal-docent/nomenaments-telematics/dificil-cobertura/",
-    "Maresme–Vallès Oriental": "https://educacio.gencat.cat/ca/departament/serveis-territorials/maresme-valles-oriental/personal-docent/nomenaments-telematics/dificil-cobertura/",
-    "Consorci BCN": "https://www.edubcn.cat/ca/professorat_i_pas/seleccio_rrhh/dificil_cobertura"
-}
+# -----------------------------
+# Inicialització FastAPI
+# -----------------------------
+app = FastAPI()
 
-# --- Funció scrape centralitzada ---
-def run_scrape():
-    db = SessionLocal()
-    existents = {o.url_pdf for o in db.query(Oferta).all()}
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6)"
-    }
-
-    for servei, url in SERVEIS.items():
-        try:
-            response = requests.get(url, headers=headers, timeout=20)
-            soup = BeautifulSoup(response.text, "html.parser")
-
-            for a in soup.find_all("a", href=True):
-                if a["href"].lower().endswith(".pdf"):
-                    pdf = a["href"]
-                    if not pdf.startswith("http"):
-                        pdf = url.rstrip("/") + "/" + pdf.lstrip("/")
-                    if pdf not in existents:
-                        db.add(Oferta(servei=servei, url_pdf=pdf))
-        except Exception as e:
-            print(f"Error amb {servei}: {e}")
-
-    db.commit()
-    db.close()
-
-# --- Background task amb cron automàtic ---
-async def scraper_cron():
-    await asyncio.sleep(5)  # espera que arranqui l'app
-    while True:
-        print("Scraper automàtic executant...")
-        run_scrape()
-        await asyncio.sleep(60 * 30)  # cada 30 minuts
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(scraper_cron())
-
-# --- Rutes ---
-@app.get("/")
-def index(request: Request):
-    db = SessionLocal()
-    ofertes = db.query(Oferta).order_by(Oferta.data_detectada.desc()).all()
-    db.close()
-    return templates.TemplateResponse(
-        "index.html",
-        {"request": request, "ofertes": ofertes}
-    )
-
-@app.post("/aplicada")
-def marcar(oferta_id: int = Form(...)):
-    db = SessionLocal()
-    oferta = db.get(Oferta, oferta_id)
-    if oferta:
-        oferta.aplicada = not oferta.aplicada
-        db.commit()
-    db.close()
-    return RedirectResponse("/", status_code=303)
-
+# -----------------------------
+# Funció de scraping
+# -----------------------------
 @app.get("/scrape")
-def scrape_manual():
-    run_scrape()
-    return {"ok": True}
+def scrape():
+    db = SessionLocal()
+    try:
+        # Exemple scraping dummy
+        url = "http://www.idescat.cat/cat/idescat/publicacions/cataleg/pdfdocs/ecpci2007-08.pdf"
+        servei = "Baix Llobregat"
+
+        # Comprovar si ja existeix
+        existing = db.query(Oferta).filter(Oferta.url_pdf == url).first()
+        if existing:
+            return JSONResponse({"message": "PDF ja existeix a la base de dades"}, status_code=200)
+
+        nova_oferta = Oferta(
+            servei=servei,
+            url_pdf=url,
+            data_detectada=datetime.now(),
+            aplicada=False
+        )
+        db.add(nova_oferta)
+        db.commit()
+        return {"message": "Oferta afegida correctament", "url_pdf": url}
+    except Exception as e:
+        db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=500)
+    finally:
+        db.close()
+
+# -----------------------------
+# Endpoint per marcar com aplicada
+# -----------------------------
+@app.post("/aplicada")
+def aplicada(id: int = Form(...)):
+    db = SessionLocal()
+    try:
+        oferta = db.query(Oferta).filter(Oferta.id == id).first()
+        if not oferta:
+            return JSONResponse({"error": "Oferta no trobada"}, status_code=404)
+        oferta.aplicada = True
+        db.commit()
+        return {"message": f"Oferta {id} marcada com aplicada"}
+    except Exception as e:
+        db.rollback()
+        return JSONResponse({"error": str(e)}, status_code=500)
+    finally:
+        db.close()
+
